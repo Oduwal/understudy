@@ -128,3 +128,17 @@ test("a lesson is written only when the most trusted forecaster changes", () => 
 test("unrelated memory text doesn't parse", () => {
   assert.equal(parseMemory("Understudy connection test, 6 Nov 2026"), null);
 });
+
+test("recalled memories that could break trust are rejected", () => {
+  const good = { kind: "grade", window: TARGET, errs: { lastHour: 0.1, usual: 0.2, average: 0.3, blend: 0.1 } };
+  const wrap = (data) => `Graded window. [understudy:${JSON.stringify(data)}]`;
+  assert.equal(parseMemory(wrap(good)).kind, "grade");
+  assert.equal(parseMemory(wrap({ ...good, errs: { ...good.errs, usual: "NaN" } })), null);
+  assert.equal(parseMemory(wrap({ ...good, errs: { lastHour: 0.1 } })), null);
+  assert.equal(parseMemory(wrap({ ...good, errs: { ...good.errs, average: -1 } })), null);
+  assert.equal(parseMemory(wrap({ ...good, window: "soon" })), null);
+  assert.equal(parseMemory(wrap({ ...good, kind: "instruction" })), null);
+  assert.equal(parseMemory(wrap({ kind: "lesson", window: TARGET, to: "somethingElse" })), null);
+  assert.equal(parseMemory(`${"x".repeat(5000)} ${wrap(good)}`), null);
+  assert.equal(parseMemory(42), null);
+});

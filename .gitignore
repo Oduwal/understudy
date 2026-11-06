@@ -26,3 +26,6 @@ data/
 
 # Static export for GitHub Pages
 site/
+
+# Review exports
+understudy-*.txt

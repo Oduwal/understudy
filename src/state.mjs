@@ -2,6 +2,8 @@
 // calls the chain or Walrus. Used by the local server and by the static site export.
 import { existsSync, readFileSync } from "node:fs";
 
+export const LIVE_DEFAULT_MIN_GRADED = 24;
+
 const SOURCES = {
   live: "Live record: forecasts and lessons written to Walrus Mainnet before each window opened.",
   "dry-run": "Dry run: real chain counts, but memories are stored only on this machine and nothing is on Walrus.",
@@ -70,6 +72,10 @@ export function state(requested, only = null) {
     replay: readReplay(),
   };
   const sources = Object.keys(SOURCES).filter((key) => available[key] && (!only || only.includes(key)));
-  const source = sources.includes(requested) ? requested : sources[0] ?? null;
+  // A visitor lands on the live record only once it has enough grades to say something;
+  // before that the replay is the default view and the live tab stays one click away.
+  const liveReady = (available.live?.score.graded ?? 0) >= LIVE_DEFAULT_MIN_GRADED;
+  const fallback = sources.find((key) => key !== "live" || liveReady) ?? sources[0] ?? null;
+  const source = sources.includes(requested) ? requested : fallback;
   return { sources, source, note: SOURCES[source] ?? null, generatedAt: Date.now(), ...(source ? available[source] : {}) };
 }

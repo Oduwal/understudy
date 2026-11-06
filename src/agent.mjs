@@ -2,12 +2,13 @@
 //
 // Dry run is the default and writes only to data/agent/dry-run/. Writing to Walrus Mainnet
 // takes the explicit --live flag, because those memories are permanent.
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { LIVE_FILE, activityFromRows, readRows } from "./activity.mjs";
 import { KEYLESS_PACE_MS, createChain, createCreditMeter } from "./chain.mjs";
 import { buildForecast, calibrateBand, gradeForecast, recentResiduals } from "./forecast.mjs";
-import { GRADE_QUERY, forecastMemory, gradeMemory, parseMemory, sentenceOf, trustLesson } from "./lessons.mjs";
+import { GRADE_QUERY, LESSON_QUERY, forecastMemory, gradeMemory, parseMemory, sentenceOf, trustLesson } from "./lessons.mjs";
+import { writeJsonAtomic } from "./files.mjs";
 import { createLocalMemory, createWalrusMemory } from "./memory.mjs";
 import { WINDOW_MS, describeWindow, windowStart } from "./windows.mjs";
 
@@ -17,7 +18,11 @@ const TICK_MS = 20_000;
 const BACKOFF_MS = 65_000;
 // A dropped connection usually clears at once; waiting a full minute cost forecast lead time.
 const TRANSIENT_BACKOFF_MS = 15_000;
-const isTransient = (error) => /ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i.test(`${error.details ?? ""} ${error.message ?? ""}`) || error.code === 14;
+const errorText = (error) => `${error.details ?? ""} ${error.message ?? ""}`;
+// A rate limit is not a glitch: retrying quickly keeps the gateway refusing, so it gets the long wait.
+const isRateLimited = (error) => /\b429\b|rate limit/i.test(errorText(error));
+const isTransient = (error) =>
+  !isRateLimited(error) && (/ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|Name resolution/i.test(errorText(error)) || error.code === 14);
 const describeError = (error) => `${error.code === undefined ? "" : `${error.code} `}${error.details ?? error.message}`;
 const WRITE_ATTEMPTS = 3;
 const HISTORY_STATE = "data/history/state.json";
@@ -39,9 +44,16 @@ const log = (message) => console.log(`${new Date().toISOString()} [${mode}] ${me
 const memory = flags.live
   ? await createWalrusMemory({ key: process.env.MEMWAL_KEY, accountId: process.env.MEMWAL_ACCOUNT_ID })
   : createLocalMemory(`${DIR}/memories.jsonl`);
-const chain = flags["use-key"]
-  ? createChain({ apiKey: process.env.TATUM_API_KEY, meter: createCreditMeter("data/agent/credits.json") })
-  : createChain();
+// With a Tatum key present, reads stay keyless and fall back to the metered key only when the
+// anonymous limit refuses a call. --use-key makes every read keyed.
+const apiKey = process.env.TATUM_API_KEY || null;
+const keyMode = !apiKey ? "never" : flags["use-key"] ? "always" : "fallback";
+const chain = createChain({
+  apiKey,
+  meter: apiKey ? createCreditMeter("data/agent/credits.json") : null,
+  keyMode,
+  onKeyed: (label, used) => log(`keyless ${label} was rate limited; retrying with the Tatum key (about ${used} credits used so far)`),
+});
 
 const forecasts = new Map();
 const graded = new Set();
@@ -75,21 +87,43 @@ function loadSyncState() {
 
 let synced = loadSyncState();
 
-// Brings stored activity up to the chain tip. Paced for the anonymous limit.
+// Every keyless request shares one pace, so the agent stays under the gateway's anonymous
+// limit of 5 requests a minute however its calls are interleaved.
+let lastRequestAt = 0;
+async function paced(request) {
+  const wait = lastRequestAt + KEYLESS_PACE_MS - Date.now();
+  if (wait > 0) await sleep(wait);
+  lastRequestAt = Date.now();
+  return request();
+}
+
+const SYNC_FRESH_MS = 90_000;
+const saveSync = () => writeJsonAtomic(SYNC_STATE, synced);
+
+// Brings stored activity up to the chain tip. Progress is saved after every page, so a
+// failure resumes where it stopped instead of restarting a long catch-up from scratch.
 async function sync() {
-  const tip = await chain.tip();
-  let cursor;
-  let finished = false;
-  while (!finished) {
-    await sleep(KEYLESS_PACE_MS);
-    const page = await chain.fencePage({ fromCheckpoint: synced.checkpoint, toCheckpoint: tip.checkpoint, cursor });
-    if (page.rows.length) appendFileSync(LIVE_FILE, `${page.rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
-    cursor = page.cursor;
-    finished = page.finished;
-  }
-  synced = { checkpoint: tip.checkpoint, time: tip.time };
-  writeFileSync(SYNC_STATE, JSON.stringify(synced));
-  return activityFromRows(readRows(), tip.time);
+  do {
+    if (!synced.pending) {
+      const tip = await paced(() => chain.tip());
+      synced.pending = { to: tip.checkpoint, time: tip.time, cursor: null };
+      saveSync();
+    }
+    const { pending } = synced;
+    for (;;) {
+      const page = await paced(() =>
+        chain.fencePage({ fromCheckpoint: synced.checkpoint, toCheckpoint: pending.to, cursor: pending.cursor }),
+      );
+      // A page re-read after a crash may repeat rows; readRows drops duplicates by digest.
+      if (page.rows.length) appendFileSync(LIVE_FILE, `${page.rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+      pending.cursor = page.cursor ?? pending.cursor;
+      saveSync();
+      if (page.finished) break;
+    }
+    synced = { checkpoint: pending.to, time: pending.time };
+    saveSync();
+  } while (Date.now() - synced.time > SYNC_FRESH_MS);
+  return activityFromRows(readRows(), synced.time);
 }
 
 async function write(text, kind, key) {
@@ -120,11 +154,26 @@ async function recallGrades() {
   return [...byWindow.values()];
 }
 
+// On a machine with no local record, which forecaster was last trusted is read back from the
+// newest lesson in memory, so the next lesson continues the same story rather than restarting it.
+let leaderRecalled = false;
+async function recallTrustedLeader() {
+  leaderRecalled = true;
+  const found = await memory.recallRecent(LESSON_QUERY, "lesson", 10);
+  const lessons = found.map((item) => parseMemory(item.text)).filter((data) => data?.kind === "lesson");
+  const newest = lessons.sort((a, b) => b.window - a.window)[0];
+  if (newest) {
+    trustedLeader = newest.to;
+    log(`recalled from memory: currently trusting ${newest.to}`);
+  }
+}
+
 async function makeForecast(target) {
   const activity = await sync();
   const asOf = Date.now();
   const band = calibrateBand(recentResiduals(activity, asOf));
   const grades = await recallGrades();
+  if (!trustedLeader && !leaderRecalled) await recallTrustedLeader();
   const forecast = buildForecast({ activity, target, asOf, grades, band });
   if (!forecast) {
     log(`no forecast for ${describeWindow(target)}: not enough history`);
@@ -170,7 +219,7 @@ async function grade(forecast) {
   }
 }
 
-log(`started. Memory: ${memory.mode}. Chain: ${flags["use-key"] ? "keyed, metered" : "keyless"}.`);
+log(`started. Memory: ${memory.mode}. Chain: ${{ never: "keyless", fallback: "keyless, key on rate limit", always: "keyed, metered" }[keyMode]}.`);
 
 // Runs until stopped. Failures are logged and retried on the next tick.
 for (;;) {
@@ -185,6 +234,8 @@ for (;;) {
   } catch (error) {
     log(`error: ${describeError(error)}`);
     await sleep(isTransient(error) ? TRANSIENT_BACKOFF_MS : BACKOFF_MS);
+    // The wait counts as spacing, so the next request isn't fired the instant it ends.
+    if (isRateLimited(error)) lastRequestAt = Date.now();
   }
   await sleep(TICK_MS);
 }

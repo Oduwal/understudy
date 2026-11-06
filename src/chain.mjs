@@ -3,7 +3,8 @@
 // Keyless by default: anonymous access is capped at 5 requests a minute and uses no credits.
 // With a key, Tatum charged 2 credits per transaction returned (measured from the dashboard
 // on 2026-11-06), so keyed reads are metered here and refused past a hard limit.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { writeJsonAtomic } from "./files.mjs";
 import { dirname } from "node:path";
 import grpc from "@grpc/grpc-js";
 import protoLoader from "@grpc/proto-loader";
@@ -28,13 +29,17 @@ export function createCreditMeter(path) {
     allows: (rows) => used + rows * CREDITS_PER_ROW <= CREDIT_HARD_STOP,
     charge(rows) {
       used += rows * CREDITS_PER_ROW;
-      writeFileSync(path, JSON.stringify({ used }));
+      writeJsonAtomic(path, { used });
     },
   };
 }
 
-export function createChain({ apiKey, meter } = {}) {
-  if (apiKey && !meter) throw new Error("Keyed access needs a credit meter");
+const isRateLimited = (error) => /\b429\b/.test(`${error?.details ?? ""} ${error?.message ?? ""}`);
+
+// keyMode: "never" reads keyless only; "fallback" reads keyless and retries a rate-limited
+// call once with the key, metered; "always" uses the key for every call, metered.
+export function createChain({ apiKey, meter, keyMode = apiKey ? "fallback" : "never", onKeyed = () => {} } = {}) {
+  if (keyMode !== "never" && (!apiKey || !meter)) throw new Error("Keyed access needs an API key and a credit meter");
   const definition = protoLoader.loadSync(["sui/rpc/v2/ledger_service.proto"], {
     keepCase: true,
     longs: String,
@@ -46,30 +51,40 @@ export function createChain({ apiKey, meter } = {}) {
   const { sui } = grpc.loadPackageDefinition(definition);
   const ledger = new sui.rpc.v2.LedgerService(HOST, grpc.credentials.createSsl());
 
-  const useKey = () => Boolean(apiKey) && meter.allows(PAGE_SIZE);
-  const metadata = () => {
+  const canUseKey = () => keyMode !== "never" && meter.allows(PAGE_SIZE);
+  const metadata = (keyed) => {
     const m = new grpc.Metadata();
-    if (useKey()) m.set("x-api-key", apiKey);
+    if (keyed) m.set("x-api-key", apiKey);
     return m;
   };
 
-  return {
-    tip() {
-      return new Promise((resolve, reject) =>
-        ledger.GetServiceInfo({}, metadata(), { deadline: Date.now() + 30_000 }, (error, info) =>
-          error
-            ? reject(error)
-            : resolve({
-                checkpoint: Number(info.checkpoint_height),
-                time: Number(info.timestamp?.seconds) * 1000,
-              }),
-        ),
-      );
-    },
+  // Runs a call keyless (unless keyMode is "always"), and on a rate limit retries it once
+  // with the key while the credit meter allows.
+  async function withPolicy(call, label) {
+    const keyFirst = keyMode === "always" && canUseKey();
+    try {
+      return await call(keyFirst);
+    } catch (error) {
+      if (keyFirst || keyMode !== "fallback" || !isRateLimited(error) || !canUseKey()) throw error;
+      onKeyed(label, meter.used);
+      return call(true);
+    }
+  }
 
-    // One page of fence calls, oldest first, from `fromCheckpoint` up to but excluding `toCheckpoint`.
-    fencePage({ fromCheckpoint, toCheckpoint, cursor }) {
-      const keyed = useKey();
+  function tipWith(keyed) {
+    return new Promise((resolve, reject) =>
+      ledger.GetServiceInfo({}, metadata(keyed), { deadline: Date.now() + 30_000 }, (error, info) =>
+        error
+          ? reject(error)
+          : resolve({
+              checkpoint: Number(info.checkpoint_height),
+              time: Number(info.timestamp?.seconds) * 1000,
+            }),
+      ),
+    );
+  }
+
+  function pageWith({ fromCheckpoint, toCheckpoint, cursor }, keyed) {
       return new Promise((resolve, reject) => {
         const rows = [];
         let next = cursor;
@@ -82,7 +97,7 @@ export function createChain({ apiKey, meter } = {}) {
             filter: { terms: [{ literals: [{ move_call: { function: FENCE_FUNCTION } }] }] },
             options: { limit: PAGE_SIZE, ...(cursor ? { after: Buffer.from(cursor, "base64") } : {}) },
           },
-          metadata(),
+          metadata(keyed),
           { deadline: Date.now() + 60_000 },
         );
         stream.on("data", (frame) => {
@@ -104,8 +119,12 @@ export function createChain({ apiKey, meter } = {}) {
           resolve({ rows, cursor: next, finished: reason !== "QUERY_END_REASON_ITEM_LIMIT" && reason !== "QUERY_END_REASON_SCAN_LIMIT" });
         });
       });
-    },
+  }
 
+  return {
+    tip: () => withPolicy(tipWith, "tip"),
+    // One page of fence calls, oldest first, from `fromCheckpoint` up to but excluding `toCheckpoint`.
+    fencePage: (range) => withPolicy((keyed) => pageWith(range, keyed), "page"),
     close: () => ledger.close(),
   };
 }

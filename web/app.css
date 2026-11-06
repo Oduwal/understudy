@@ -67,6 +67,9 @@ h1 { font-size: 26px; line-height: 32px; font-weight: 600; letter-spacing: -0.01
 .swatch { display: inline-block; width: 14px; }
 .swatch-actual { height: 2px; background: var(--chart-actual); }
 .swatch-band { height: 8px; background: var(--accent); opacity: .28; }
+.swatch-nomemory { height: 0; border-top: 1px dashed var(--muted); }
+.proof { margin-top: 8px; font-size: 12px; line-height: 17px; color: var(--muted); }
+.proof a { color: var(--text); }
 .swatch-alert { width: 7px; height: 7px; border-radius: 50%; background: var(--negative); }
 .chart-controls { display: flex; gap: 16px; }
 

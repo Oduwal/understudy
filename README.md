@@ -33,6 +33,8 @@ Settings were chosen on the first half only. On the second half, memory scored 2
 **Limits of this result:**
 
 - The gain is modest (about 4%) and rests on a few days of data.
+- The no-memory figure depends on which forecasters are in the pool. The "blend" forecaster is the average of two others, so equal trust leans toward them. Replacing it with "last window only" makes the no-memory average nearly as good as memory (26.0 against 25.9). What holds in every pool tested is that memory beats every single forecaster on its own.
+- Other changes tried on the same history (ramping trust in slowly, weighting the last hour toward its newest window, damping the last hour after a spike) moved the error by 0.2 or less, so the model was left as it is.
 - Relayer traffic is mostly noise at this scale. A fixed daily rhythm didn't beat the no-memory forecast at any window length from 15 minutes to 3 hours.
 - The replay keeps grades in a plain array and doesn't go through Walrus recall. The live agent's results may differ.
 
@@ -56,8 +58,24 @@ npm run dashboard      # http://127.0.0.1:4173
 
 ## How it uses Tatum
 
-All chain reads go through Tatum's Sui gRPC gateway. By default they're keyless, which Tatum allows at 5 requests a minute. With `--use-key`, reads use your API key and are metered at 2 credits per transaction returned, as measured from the dashboard, with a hard stop at 80,000 credits.
+All chain reads go through Tatum's Sui gRPC gateway (`GetServiceInfo` for the tip, `ListTransactions` with a Move-call filter for the relayer's calls). Reads start keyless and are spaced 13 seconds apart, under the anonymous limit of 5 requests a minute.
+
+When `TATUM_API_KEY` is set and the gateway refuses a keyless call with a rate limit, that one call is retried with the key. Keyed reads are metered at 2 credits per transaction returned, as measured from the Tatum dashboard, and stop at 80,000 credits. `--use-key` makes every read keyed. Catch-up after downtime saves its progress after every page, so a refused call resumes rather than restarting.
+
+## Running record
+
+The live agent runs on one machine. It had no record between 07:03 and 15:48 UTC on 6 Nov while that machine was asleep, and windows in that gap have no forecast. From about 16:55 UTC on 6 Nov, keyless reads were being refused, so the key fallback has been carrying the reads.
 
 ## How it uses Walrus Memory
 
-Forecasts, grades and lessons are saved with `remember`, and grades come back through `recall`. Memories hold only public chain figures and the agent's own forecasts, with no personal data. The memories are permanent, so a namespace can't be fully erased.
+Forecasts, grades and lessons are saved with `remember` into three namespaces (`understudy-forecasts`, `understudy-grades`, `understudy-lessons`). Before each forecast, grades come back through `recall` with `sort: "recent"`; keeping them in their own namespace means the newest grades are always the candidates. On a machine with no local record, the agent also recalls its newest lesson to know which forecaster it last trusted.
+
+Recalled memories are validated before they can affect trust: the trailer must parse, the window must be a finite time, and every forecaster's miss must be a finite, non-negative number. A malformed memory is ignored rather than allowed to turn the weights into NaN.
+
+Each live forecast on the dashboard links to its Walrus blob. The blob's certification on Sui is the independent record that the number existed before its window opened.
+
+Memories hold only public chain figures and the agent's own forecasts, with no personal data. They're permanent: the SDK has no delete, and the relayer's forget only removes the search index.
+
+## Running it on Windows
+
+`run-agent.ps1` and `run-publisher.ps1` are optional helpers for the machine that hosts the agent: they keep it running, restart it if it exits, hold off sleep while open, and republish the dashboard hourly. Everything else runs through the npm scripts above on any platform.

@@ -4,7 +4,8 @@
 // It resumes from data/history/state.json if stopped.
 //
 // Usage: node scripts/pull-history.mjs [--days 7] [--pages N]
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { writeJsonAtomic } from "../src/files.mjs";
 import { parseArgs } from "node:util";
 import grpc from "@grpc/grpc-js";
 import protoLoader from "@grpc/proto-loader";
@@ -94,7 +95,7 @@ if (existsSync(STATE)) {
   const tip = Number(info.checkpoint_height);
   const back = Math.round(Number(values.days) * 86_400 * CHECKPOINTS_PER_SECOND);
   state = { start: String(tip - back), end: String(tip), cursor: null, rows: 0, done: false };
-  writeFileSync(STATE, JSON.stringify(state, null, 2));
+  writeJsonAtomic(STATE, state);
   await sleep(PACE_MS);
 }
 
@@ -112,7 +113,7 @@ while (!state.done && pages < maxPages) {
   state.rows += page.rows.length;
   if (page.cursor) state.cursor = page.cursor;
   state.done = page.reason === "QUERY_END_REASON_CHECKPOINT_BOUND" || page.reason === "QUERY_END_REASON_LEDGER_TIP";
-  writeFileSync(STATE, JSON.stringify(state, null, 2));
+  writeJsonAtomic(STATE, state);
   pages += 1;
   console.log(`page ${pages}: ${page.rows.length} rows, total ${state.rows}, up to ${page.rows.at(-1)?.time ?? "n/a"}, ended ${page.reason}`);
   if (!state.done) await sleep(PACE_MS);

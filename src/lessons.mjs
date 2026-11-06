@@ -3,8 +3,12 @@
 import { FORECASTER_NAMES } from "./forecast.mjs";
 import { clockTime, describeWindow, weekdayName } from "./windows.mjs";
 
-const TRAILER = /\s*\[understudy:(\{.*\})\]\s*$/;
+const TRAILER = /\s*\[understudy:(\{[^\r\n]*\})\]\s*$/;
+const MAX_MEMORY_LENGTH = 4096;
+const MAX_LOG_MISS = 20;
+const KINDS = new Set(["forecast", "grade", "lesson"]);
 export const GRADE_QUERY = "Graded window: how each forecaster did against the relayer count";
+export const LESSON_QUERY = "Lesson: now trusting one forecaster over another";
 const CLEAR_MARGIN = 0.05;
 
 const withTrailer = (sentence, data) => `${sentence} [understudy:${JSON.stringify(data)}]`;
@@ -13,14 +17,28 @@ const percentMiss = (logMiss) => Math.round((Math.exp(logMiss) - 1) * 100);
 
 export const sentenceOf = (text) => text.replace(TRAILER, "");
 
+// Recalled memories are checked before they can touch trust: a malformed or non-finite grade
+// would otherwise turn every weight into NaN and stall the agent.
 export function parseMemory(text) {
-  const match = TRAILER.exec(text ?? "");
+  if (typeof text !== "string" || text.length > MAX_MEMORY_LENGTH) return null;
+  const match = TRAILER.exec(text);
   if (!match) return null;
+  let data;
   try {
-    return JSON.parse(match[1]);
+    data = JSON.parse(match[1]);
   } catch {
     return null;
   }
+  if (!data || typeof data !== "object" || !KINDS.has(data.kind) || !Number.isFinite(data.window)) return null;
+  if (data.kind === "grade") {
+    if (!data.errs || typeof data.errs !== "object") return null;
+    for (const name of Object.keys(FORECASTER_NAMES)) {
+      const miss = data.errs[name];
+      if (!Number.isFinite(miss) || miss < 0 || miss > MAX_LOG_MISS) return null;
+    }
+  }
+  if (data.kind === "lesson" && !(data.to in FORECASTER_NAMES)) return null;
+  return data;
 }
 
 export function forecastMemory(forecast) {

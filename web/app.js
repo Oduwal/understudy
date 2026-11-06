@@ -13,7 +13,52 @@ const describe = (ms) => `${utcDay(ms)}, ${utcTime(ms)}-${utcTime(ms + WINDOW_MS
 const signed = (n) => (n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : "0");
 const decimal = (n) => (n === null || n === undefined ? null : n.toFixed(1));
 const percent = (n) => (n === null || n === undefined ? null : `${(n * 100).toFixed(0)}%`);
+const BLOB_ID = /^[A-Za-z0-9_-]{20,100}$/;
+const blobLink = (id) => `https://walruscan.com/mainnet/blob/${encodeURIComponent(id)}`;
 
+// Everything from the state file is coerced to the shape the screen expects before any of it
+// reaches HTML: numbers to finite numbers, labels to known values, blob IDs to their alphabet.
+const finite = (v) => (Number.isFinite(v) ? v : null);
+const known = (v, allowed) => (allowed.includes(v) ? v : null);
+const numbers = (record) => Object.fromEntries(Object.entries(record ?? {}).map(([k, v]) => [k, finite(v) ?? 0]));
+function sanitizeWindow(w) {
+  return {
+    window: w.window,
+    expected: finite(w.expected) ?? 0,
+    low: finite(w.low) ?? 0,
+    high: finite(w.high) ?? 0,
+    noMemory: finite(w.noMemory) ?? 0,
+    actual: finite(w.actual),
+    hit: w.hit === true,
+    alert: known(w.alert, ["busy", "quiet"]),
+    late: w.late === true,
+    evidence: finite(w.evidence) ?? 0,
+    estimates: numbers(w.estimates),
+    weights: numbers(w.weights),
+    memoryId: typeof w.memoryId === "string" && BLOB_ID.test(w.memoryId) ? w.memoryId : null,
+    writtenAt: finite(w.writtenAt),
+  };
+}
+function sanitize(state) {
+  const sources = (state.sources ?? []).filter((key) => key in SOURCE_NAMES);
+  const windows = (state.windows ?? []).filter((w) => Number.isFinite(w?.window)).map(sanitizeWindow);
+  const alerts = (state.alerts ?? [])
+    .filter((a) => Number.isFinite(a?.window) && known(a.kind, ["busy", "quiet"]))
+    .map((a) => ({ window: a.window, kind: a.kind, actual: finite(a.actual) ?? 0, low: finite(a.low) ?? 0, high: finite(a.high) ?? 0 }));
+  const lessons = (state.lessons ?? [])
+    .filter((l) => Number.isFinite(l?.window))
+    .map((l) => ({ window: l.window, sentence: String(l.sentence ?? ""), memoryId: typeof l.memoryId === "string" && BLOB_ID.test(l.memoryId) ? l.memoryId : null }));
+  return {
+    ...state,
+    sources,
+    source: known(state.source, sources),
+    generatedAt: finite(state.generatedAt) ?? Date.now(),
+    windows,
+    alerts,
+    lessons,
+    score: numbers(state.score),
+  };
+}
 
 const ui = { source: null, range: 96, selected: null, state: null, error: null, lastGood: null };
 
@@ -34,7 +79,7 @@ async function fetchState() {
 
 async function load() {
   try {
-    ui.state = await fetchState();
+    ui.state = sanitize(await fetchState());
     ui.source = ui.state.source;
     ui.error = null;
     ui.lastGood = Date.now();
@@ -150,8 +195,21 @@ function whyPanel(state) {
     <p class="why-window">${esc(describe(w.window))}${late}</p>
     <div class="lead-row"><p class="lead">${w.expected}</p><p class="lead-unit">memories expected</p></div>
     <p class="why-range"><span class="figure">${w.low} to ${w.high}</span> expected range. ${esc(outcomeLine(w))}.</p>
+    ${proofLine(w)}
     ${renderLadder(w)}
   </section>`;
+}
+
+// The forecast's own Walrus blob, and how long before the window it was certified. The blob's
+// on-chain certification time is the independent proof that the number came first.
+function proofLine(w) {
+  // Only the live record is on Walrus; dry-run and replay IDs are local labels.
+  if (ui.source !== "live" || !w.memoryId) return "";
+  const lead = w.writtenAt === null ? null : Math.round((w.window - w.writtenAt) / 1000);
+  const when = lead === null ? "Saved to Walrus Mainnet" : lead > 0
+    ? `Saved to Walrus Mainnet ${Math.floor(lead / 60)} min ${lead % 60} s before the window opened`
+    : "Saved to Walrus Mainnet after the window opened";
+  return `<p class="proof">${when}. <a href="${blobLink(w.memoryId)}" target="_blank" rel="noopener">Blob <span class="figure">${esc(w.memoryId.slice(0, 10))}&hellip;</span></a></p>`;
 }
 
 function scoresBlock(score) {
@@ -178,6 +236,7 @@ function chartPanel(state) {
     <div class="legend">
       <span><i class="swatch swatch-actual"></i>Counted on chain</span>
       <span><i class="swatch swatch-band"></i>Forecast range</span>
+      <span><i class="swatch swatch-nomemory"></i>No-memory forecast</span>
       <span><i class="swatch swatch-alert"></i>Alert</span>
     </div>
     <div class="chart" id="chart" role="img" aria-label="Forecast range and counted memories per 15-minute window"></div>
@@ -269,7 +328,7 @@ function drawChart(state) {
   }
   const from = rows[0].window;
   const to = rows.at(-1).window + WINDOW_MS;
-  const top = Math.max(...rows.flatMap((r) => [r.high, r.actual ?? 0]), 1);
+  const top = Math.max(...rows.flatMap((r) => [r.high, r.noMemory, r.actual ?? 0]), 1);
   const step = roundStep(top);
   const yMax = Math.ceil((top + 1) / step) * step;
   const x = (t) => m.left + ((t - from) / (to - from)) * (width - m.left - m.right);
@@ -303,6 +362,7 @@ function drawChart(state) {
     <style>.tick{font:400 11px var(--figures);fill:var(--muted)}</style>
     ${grid}
     <polygon points="${band}" fill="var(--accent)" fill-opacity=".28"/>
+    <polyline points="${rows.map((r) => `${x(mid(r))},${y(r.noMemory)}`).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"/>
     <polyline points="${line(counted)}" fill="none" stroke="var(--chart-actual)" stroke-width="${ui.range > 288 ? 1 : 1.500}"/>
     ${alerts}${selected}
     <line id="cursor" y1="${m.top}" y2="${height - m.bottom}" stroke="var(--control)" visibility="hidden"/>
@@ -321,7 +381,7 @@ function drawChart(state) {
     cursor.setAttribute("visibility", "visible");
     const tip = $("tip");
     tip.hidden = false;
-    tip.innerHTML = `<b>${esc(describe(r.window))}</b><br>Forecast <span class="figure">${r.expected}</span> (<span class="figure">${r.low}-${r.high}</span>)<br>Counted <span class="figure">${r.actual ?? "not yet"}</span>`;
+    tip.innerHTML = `<b>${esc(describe(r.window))}</b><br>Forecast <span class="figure">${r.expected}</span> (<span class="figure">${r.low}-${r.high}</span>)<br>No memory <span class="figure">${r.noMemory}</span><br>Counted <span class="figure">${r.actual ?? "not yet"}</span>`;
     tip.style.left = `${Math.min(window.innerWidth - 250, event.clientX + 14)}px`;
     tip.style.top = `${event.clientY + 14}px`;
   };
