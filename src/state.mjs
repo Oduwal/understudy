@@ -12,14 +12,15 @@ const SOURCES = {
 
 const mean = (values) => (values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : null);
 
-function score(windows) {
+export function score(windows) {
   const graded = windows.filter((w) => w.actual !== null && !w.late);
+  const withLastHour = graded.filter((w) => Number.isFinite(w.estimates?.lastHour));
   return {
     graded: graded.length,
     late: windows.filter((w) => w.late).length,
     meanError: mean(graded.map((w) => Math.abs(w.actual - w.expected))),
     meanErrorNoMemory: mean(graded.map((w) => Math.abs(w.actual - w.noMemory))),
-    meanErrorLastHour: mean(graded.map((w) => Math.abs(w.actual - w.estimates.lastHour))),
+    meanErrorLastHour: mean(withLastHour.map((w) => Math.abs(w.actual - w.estimates.lastHour))),
     hitRate: mean(graded.map((w) => (w.hit ? 1 : 0))),
   };
 }

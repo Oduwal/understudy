@@ -5,7 +5,7 @@
   "type": "module",
   "description": "An agent that forecasts Walrus Memory relayer activity, gets graded by the chain through Tatum, and learns from its misses on Walrus Memory.",
   "engines": {
-    "node": ">=22.23.4 <23"
+    "node": "22.x"
   },
   "scripts": {
     "setup:protos": "node scripts/setup-protos.mjs",
@@ -19,7 +19,8 @@
     "agent:dry": "node --env-file-if-exists=.env src/agent.mjs",
     "agent:live": "node --env-file-if-exists=.env src/agent.mjs --live",
     "export:site": "node scripts/export-site.mjs",
-    "publish:site": "node scripts/publish-site.mjs"
+    "publish:site": "node scripts/publish-site.mjs",
+    "export:replay": "node scripts/export-replay.mjs"
   },
   "dependencies": {
     "@grpc/grpc-js": "1.14.7",

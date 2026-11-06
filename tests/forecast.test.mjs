@@ -142,3 +142,27 @@ test("recalled memories that could break trust are rejected", () => {
   assert.equal(parseMemory(`${"x".repeat(5000)} ${wrap(good)}`), null);
   assert.equal(parseMemory(42), null);
 });
+
+test("the live state is rebuilt from recalled Walrus memories alone", async () => {
+  const { stateFromMemories } = await import("../src/walrus-state.mjs");
+  const estimates = { lastHour: 80, usual: 70, average: 60, blend: 75 };
+  const forecast = { window: TARGET, expected: 80, low: 65, high: 98, noMemory: 72, estimates, weights: { lastHour: 0.7, usual: 0.1, average: 0.1, blend: 0.1 }, leader: "lastHour", evidence: 3 };
+  const grade = gradeForecast(forecast, 90, BAND);
+  const item = (text, id, at) => ({ text, blob_id: id, created_at: new Date(at).toISOString() });
+  const state = stateFromMemories({
+    forecasts: [item(forecastMemory(forecast), "f1", TARGET - 3 * 60_000), item(forecastMemory({ ...forecast, window: TARGET + WINDOW_MS }), "f2", TARGET + WINDOW_MS + 1000)],
+    grades: [item(gradeMemory(forecast, grade), "g1", TARGET + 17 * 60_000), item("not a memory of ours", "x", TARGET)],
+    lessons: [item(trustLesson({ window: TARGET, leader: "usual", typicalMiss: { usual: 0.1, lastHour: 0.4 } }, "lastHour"), "l1", TARGET)],
+  });
+  assert.equal(state.windows.length, 2);
+  const [first, second] = state.windows;
+  assert.equal(first.actual, 90);
+  assert.equal(first.memoryId, "f1");
+  assert.equal(first.late, false);
+  assert.equal(first.estimates.lastHour, 80);
+  assert.equal(second.late, true);
+  assert.equal(second.actual, null);
+  assert.equal(state.lessons.length, 1);
+  assert.equal(state.score.graded, 1);
+  assert.equal(state.score.meanError, 10);
+});

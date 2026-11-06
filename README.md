@@ -52,6 +52,8 @@ npm run agent:dry      # real chain counts, memories stay on this machine
 npm run dashboard      # http://127.0.0.1:4173
 ```
 
+**Hosted on Vercel.** `api/state.js` rebuilds the live dashboard from Walrus on each request: it recalls the newest forecasts, grades and lessons with a dashboard-only delegate key and joins them, with no local files involved. Responses are cached at the edge for five minutes so visitors can't use up the relayer rate limit the agent relies on. The replay comes from `public-data/replay.json` (`npm run export:replay`). Set `MEMWAL_DASHBOARD_KEY` and `MEMWAL_ACCOUNT_ID` in the Vercel project; the dashboard key can be revoked at memory.walrus.xyz without affecting the agent.
+
 `npm run export:site` writes a static copy of the dashboard to `site/`, with a snapshot of the live record and the replay. The hosted dashboard is that copy, so it is only as fresh as its last published snapshot, and it says when that was.
 
 `npm run agent:live` writes permanent, public-network memories to Walrus Mainnet and needs `MEMWAL_KEY` and `MEMWAL_ACCOUNT_ID` in `.env`. See `.env.example`.

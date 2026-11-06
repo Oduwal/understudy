@@ -56,7 +56,7 @@ function sanitize(state) {
     windows,
     alerts,
     lessons,
-    score: numbers(state.score),
+    score: Object.fromEntries(Object.entries(state.score ?? {}).map(([k, v]) => [k, finite(v)])),
   };
 }
 
@@ -124,7 +124,11 @@ function renderHeader(state) {
   $("finding").textContent = state.source ? finding(state) : "The agent hasn't recorded anything yet.";
   const last = graded(state).at(-1);
   const through = last ? `Graded through ${utcDay(last.window)}, ${utcTime(last.window + WINDOW_MS)} UTC` : "";
-  const snapshot = ui.static ? `Snapshot taken ${utcDay(state.generatedAt)}, ${utcTime(state.generatedAt)} UTC` : "";
+  const snapshot = ui.static
+    ? `Snapshot taken ${utcDay(state.generatedAt)}, ${utcTime(state.generatedAt)} UTC`
+    : state.readFromWalrus
+      ? `Read from Walrus at ${utcTime(state.generatedAt)} UTC`
+      : "";
   $("stamp").textContent = [through, snapshot].filter(Boolean).join(". ");
 }
 
@@ -150,12 +154,20 @@ function trustSteps(w) {
 }
 
 function renderLadder(w) {
-  const rows = trustSteps(w)
-    .map(({ name, share, estimate, trust }) => `<li>
+  // Forecasts saved before 6 Nov 19:00 UTC stored trust but not each forecaster's estimate,
+  // so for those the breakdown shows trust alone rather than inventing the shares.
+  const hasEstimates = Object.keys(FORECASTERS).every((name) => Number.isFinite(w.estimates[name]) && Number.isFinite(w.weights[name]));
+  const rows = hasEstimates
+    ? trustSteps(w)
+        .map(({ name, share, estimate, trust }) => `<li>
       <span class="step-name">${FORECASTERS[name]}<span class="step-id">says ${estimate}, trusted ${(trust * 100).toFixed(0)}%</span></span>
       <span class="step-value">${share}</span>
     </li>`)
-    .join("");
+        .join("")
+    : Object.keys(FORECASTERS)
+        .sort((a, b) => (w.weights[b] ?? 0) - (w.weights[a] ?? 0))
+        .map((name) => `<li><span class="step-name">${FORECASTERS[name]}</span><span class="step-value">${((w.weights[name] ?? 0) * 100).toFixed(0)}%</span></li>`)
+        .join("");
   const windows = `${w.evidence} graded ${w.evidence === 1 ? "window" : "windows"}`;
   const evidence = !w.evidence
     ? "No grades yet, so every forecaster is trusted equally."
@@ -164,7 +176,7 @@ function renderLadder(w) {
       : ui.source === "dry-run"
         ? `Trust comes from ${windows} recalled from the local dry-run store.`
         : `Trust comes from ${windows} earlier in this replay.`;
-  return `<p class="ladder-head"><span>Forecaster</span><span>Adds to forecast</span></p>
+  return `<p class="ladder-head"><span>Forecaster</span><span>${hasEstimates ? "Adds to forecast" : "Trusted"}</span></p>
   <ol class="ladder">
     ${rows}
     <li><span class="step-name total">Forecast</span><span class="step-value total">${w.expected}</span></li>

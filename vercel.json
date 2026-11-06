@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "npm test",
+  "outputDirectory": "web",
+  "functions": {
+    "api/state.js": {
+      "maxDuration": 30,
+      "includeFiles": "public-data/**"
+    }
+  }
+}

@@ -42,12 +42,14 @@ export function parseMemory(text) {
 }
 
 export function forecastMemory(forecast) {
-  const { window, expected, low, high, noMemory, leader, evidence, weights } = forecast;
+  const { window, expected, low, high, noMemory, leader, evidence, weights, estimates } = forecast;
+  const said = Object.fromEntries(Object.entries(estimates ?? {}).map(([key, v]) => [key, Number(v.toFixed(1))]));
   const trusted = leader ? `Trusting ${FORECASTER_NAMES[leader].toLowerCase()} most` : "Trusting every forecaster equally";
   return withTrailer(
     `Forecast for ${describeWindow(window)}: ${expected} memories expected, range ${low} to ${high}. ` +
       `${trusted}, from ${evidence} graded windows. With no memory I would have said ${noMemory}.`,
-    { kind: "forecast", window, expected, low, high, noMemory, weights: rounded(weights) },
+    // Estimates and evidence let the dashboard explain the forecast from Walrus alone.
+    { kind: "forecast", window, expected, low, high, noMemory, weights: rounded(weights), estimates: said, evidence },
   );
 }
 
