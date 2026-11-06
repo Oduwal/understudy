@@ -20,7 +20,11 @@ export function score(windows) {
     late: windows.filter((w) => w.late).length,
     meanError: mean(graded.map((w) => Math.abs(w.actual - w.expected))),
     meanErrorNoMemory: mean(graded.map((w) => Math.abs(w.actual - w.noMemory))),
+    // Last hour alone is only known where the forecast stored every estimate, so it is
+    // reported with its own count and with memory scored on those same windows.
     meanErrorLastHour: mean(withLastHour.map((w) => Math.abs(w.actual - w.estimates.lastHour))),
+    lastHourWindows: withLastHour.length,
+    meanErrorOnLastHourWindows: mean(withLastHour.map((w) => Math.abs(w.actual - w.expected))),
     hitRate: mean(graded.map((w) => (w.hit ? 1 : 0))),
   };
 }

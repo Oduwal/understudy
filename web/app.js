@@ -226,11 +226,18 @@ function proofLine(w) {
   return `<p class="proof">${when}. <a href="${blobLink(w.memoryId)}" target="_blank" rel="noopener">Blob <span class="figure">${esc(w.memoryId.slice(0, 10))}&hellip;</span></a></p>`;
 }
 
+// Last hour alone may cover fewer windows than the others; say so, with memory on the same set.
+function lastHourCaption(score) {
+  const n = score.lastHourWindows;
+  if (!n || n === score.graded) return "the simplest rule to beat";
+  return `over ${n} windows; memory ${decimal(score.meanErrorOnLastHourWindows)} on those`;
+}
+
 function scoresBlock(score) {
   const items = [
     ["Error with memory", decimal(score.meanError), "mean memories per window"],
     ["Error with no memory", decimal(score.meanErrorNoMemory), "every forecaster trusted equally"],
-    ["Last hour alone", decimal(score.meanErrorLastHour), "the simplest rule to beat"],
+    ["Last hour alone", decimal(score.meanErrorLastHour), lastHourCaption(score)],
     ["Inside the range", percent(score.hitRate), `of ${score.graded} graded windows`],
   ];
   return `<dl class="scores">${items
