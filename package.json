@@ -1,0 +1,28 @@
+{
+  "name": "understudy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "An agent that forecasts Walrus Memory relayer activity, gets graded by the chain through Tatum, and learns from its misses on Walrus Memory.",
+  "engines": {
+    "node": ">=22.23.4 <23"
+  },
+  "scripts": {
+    "setup:protos": "node scripts/setup-protos.mjs",
+    "check:tatum": "node --env-file-if-exists=.env scripts/check-tatum.mjs",
+    "check:walrus": "node --env-file-if-exists=.env scripts/check-walrus.mjs",
+    "survey": "node scripts/survey-senders.mjs",
+    "history": "node scripts/pull-history.mjs",
+    "backtest": "node scripts/backtest.mjs",
+    "test": "node --test \"tests/*.test.mjs\"",
+    "dashboard": "node src/dashboard.mjs",
+    "agent:dry": "node --env-file-if-exists=.env src/agent.mjs",
+    "agent:live": "node --env-file-if-exists=.env src/agent.mjs --live",
+    "export:site": "node scripts/export-site.mjs"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "1.14.7",
+    "@grpc/proto-loader": "0.8.1",
+    "@mysten-incubation/memwal": "0.1.13"
+  }
+}
