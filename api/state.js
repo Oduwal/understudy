@@ -61,6 +61,7 @@ export default async function handler(request, response) {
     const note = liveError ? `${REPLAY_NOTE} The live record couldn't be read from Walrus just now.` : REPLAY_NOTE;
     body = { sources, source, note, generatedAt: Date.now(), ...replay() };
   }
-  response.setHeader("cache-control", "public, s-maxage=300, stale-while-revalidate=600");
+  // Fresh for five minutes; after that the last copy is served at once while a new read runs.
+  response.setHeader("cache-control", "public, s-maxage=300, stale-while-revalidate=86400");
   response.status(200).json(body);
 }

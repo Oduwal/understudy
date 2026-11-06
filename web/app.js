@@ -332,7 +332,9 @@ const roundStep = (max) => {
 function drawChart(state) {
   const host = $("chart");
   if (!host) return;
-  const rows = state.windows.slice(-ui.range);
+  // The range is a span of time, not a count of windows, so gaps in the record stay visible.
+  const latest = state.windows.at(-1)?.window ?? 0;
+  const rows = state.windows.filter((w) => w.window > latest - ui.range * WINDOW_MS);
   const width = host.clientWidth;
   const height = host.clientHeight;
   const m = { top: 10, right: 6, bottom: 22, left: 34 };
@@ -364,9 +366,30 @@ function drawChart(state) {
     const label = hours >= 24 || t % 86_400_000 === 0 ? utcDay(t) : utcTime(t);
     grid += `<text x="${px}" y="${height - 6}" text-anchor="${px < m.left + 20 ? "start" : "middle"}" class="tick">${esc(label)}</text>`;
   }
-  const band = [...rows.map((r) => `${x(mid(r))},${y(r.high)}`), ...[...rows].reverse().map((r) => `${x(mid(r))},${y(r.low)}`)].join(" ");
-  const line = (list) => list.map((r) => `${x(mid(r))},${y(r.actual)}`).join(" ");
+  // Lines and the range break wherever windows are missing, so nothing is drawn across a gap
+  // in the record (when the agent wasn't running) as if it had been forecast.
+  const runs = (list) => {
+    const out = [];
+    for (const r of list) {
+      const run = out.at(-1);
+      if (run && r.window - run.at(-1).window === WINDOW_MS) run.push(r);
+      else out.push([r]);
+    }
+    return out;
+  };
+  const point = (r, v) => `${x(mid(r))},${y(v)}`;
   const counted = rows.filter((r) => r.actual !== null);
+  const bands = runs(rows)
+    .map((run) => {
+      const edge = run.length === 1 ? [{ ...run[0], window: run[0].window - WINDOW_MS / 4 }, { ...run[0], window: run[0].window + WINDOW_MS / 4 }] : run;
+      const points = [...edge.map((r) => point(r, r.high)), ...[...edge].reverse().map((r) => point(r, r.low))].join(" ");
+      return `<polygon points="${points}" fill="var(--accent)" fill-opacity=".28"/>`;
+    })
+    .join("");
+  const polylines = (list, value, attrs) =>
+    runs(list).map((run) => `<polyline points="${run.map((r) => point(r, value(r))).join(" ")}" fill="none" ${attrs}/>`).join("");
+  const noMemoryLines = polylines(rows, (r) => r.noMemory, `stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"`);
+  const actualLines = polylines(counted, (r) => r.actual, `stroke="var(--chart-actual)" stroke-width="${ui.range > 288 ? 1 : 1.5}"`);
   const alerts = counted.filter((r) => r.alert).map((r) => `<circle cx="${x(mid(r))}" cy="${y(r.actual)}" r="3.500" fill="var(--negative)"/>`).join("");
   const sel = selectedWindow(state);
   const selected = sel && sel.window >= from && sel.window < to
@@ -375,9 +398,7 @@ function drawChart(state) {
   host.innerHTML = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
     <style>.tick{font:400 11px var(--figures);fill:var(--muted)}</style>
     ${grid}
-    <polygon points="${band}" fill="var(--accent)" fill-opacity=".28"/>
-    <polyline points="${rows.map((r) => `${x(mid(r))},${y(r.noMemory)}`).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"/>
-    <polyline points="${line(counted)}" fill="none" stroke="var(--chart-actual)" stroke-width="${ui.range > 288 ? 1 : 1.500}"/>
+    ${bands}${noMemoryLines}${actualLines}
     ${alerts}${selected}
     <line id="cursor" y1="${m.top}" y2="${height - m.bottom}" stroke="var(--control)" visibility="hidden"/>
   </svg>`;
@@ -385,7 +406,7 @@ function drawChart(state) {
   const nearest = (clientX) => {
     const box = host.getBoundingClientRect();
     const t = from + ((clientX - box.left - m.left) / (width - m.left - m.right)) * (to - from);
-    return rows[Math.min(rows.length - 1, Math.max(0, Math.floor((t - from) / WINDOW_MS)))];
+    return rows.reduce((best, r) => (Math.abs(mid(r) - t) < Math.abs(mid(best) - t) ? r : best), rows[0]);
   };
   host.onpointermove = (event) => {
     const r = nearest(event.clientX);
@@ -427,6 +448,9 @@ function render() {
     if (ui.error) {
       $("view").innerHTML = `<p class="error">Couldn't load the agent's record.<button type="button" id="retry">Retry</button></p>`;
       $("finding").textContent = "";
+    } else {
+      // The first read after a quiet spell recalls from Walrus, which takes a few seconds.
+      $("view").innerHTML = `<p class="loading">Recalling the agent's record from Walrus Mainnet. This takes a few seconds the first time.</p>`;
     }
     return;
   }

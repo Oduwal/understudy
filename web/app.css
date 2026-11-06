@@ -157,3 +157,4 @@ tbody tr[aria-selected="true"] { background: var(--raised); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+.loading { margin-top: var(--gap); padding: 16px 20px; border-radius: var(--radius-card); background: var(--surface); color: var(--muted); font-size: 13px; }
