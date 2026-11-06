@@ -18,7 +18,8 @@
     "dashboard": "node src/dashboard.mjs",
     "agent:dry": "node --env-file-if-exists=.env src/agent.mjs",
     "agent:live": "node --env-file-if-exists=.env src/agent.mjs --live",
-    "export:site": "node scripts/export-site.mjs"
+    "export:site": "node scripts/export-site.mjs",
+    "publish:site": "node scripts/publish-site.mjs"
   },
   "dependencies": {
     "@grpc/grpc-js": "1.14.7",

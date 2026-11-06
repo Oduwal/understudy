@@ -15,6 +15,10 @@ const FORECAST_LEAD_MS = 5 * 60_000;
 const GRADE_GRACE_MS = 90_000;
 const TICK_MS = 20_000;
 const BACKOFF_MS = 65_000;
+// A dropped connection usually clears at once; waiting a full minute cost forecast lead time.
+const TRANSIENT_BACKOFF_MS = 15_000;
+const isTransient = (error) => /ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i.test(`${error.details ?? ""} ${error.message ?? ""}`) || error.code === 14;
+const describeError = (error) => `${error.code === undefined ? "" : `${error.code} `}${error.details ?? error.message}`;
 const WRITE_ATTEMPTS = 3;
 const HISTORY_STATE = "data/history/state.json";
 const SYNC_STATE = "data/activity/state.json";
@@ -96,10 +100,10 @@ async function write(text, kind, key) {
       ownWrites.push(result);
       return result;
     } catch (error) {
-      log(`write ${key} failed (attempt ${attempt}): ${error.message}`);
+      log(`write ${key} failed (attempt ${attempt}): ${describeError(error)}`);
       // Retrying is safe: the idempotency key stops a duplicate memory.
       if (attempt >= WRITE_ATTEMPTS) throw error;
-      await sleep(BACKOFF_MS);
+      await sleep(isTransient(error) ? TRANSIENT_BACKOFF_MS : BACKOFF_MS);
     }
   }
 }
@@ -179,8 +183,8 @@ for (;;) {
       if (closed && !graded.has(forecast.window)) await grade(forecast);
     }
   } catch (error) {
-    log(`error: ${error.details ?? error.message}`);
-    await sleep(BACKOFF_MS);
+    log(`error: ${describeError(error)}`);
+    await sleep(isTransient(error) ? TRANSIENT_BACKOFF_MS : BACKOFF_MS);
   }
   await sleep(TICK_MS);
 }
