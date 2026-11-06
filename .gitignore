@@ -29,3 +29,7 @@ site/
 
 # Review exports
 understudy-*.txt
+
+# Vercel CLI link
+.vercel/
+

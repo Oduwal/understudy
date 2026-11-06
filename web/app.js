@@ -60,7 +60,9 @@ function sanitize(state) {
   };
 }
 
-const ui = { source: null, range: 96, selected: null, state: null, error: null, lastGood: null };
+// ?source=live opens straight on a given record, so a link can point at it.
+const linked = new URLSearchParams(location.search).get("source");
+const ui = { source: linked in SOURCE_NAMES ? linked : null, range: 96, selected: null, state: null, error: null, lastGood: null };
 
 // The local server answers api/state. The hosted copy is static, so it falls back to the
 // snapshot files written by scripts/export-site.mjs.
