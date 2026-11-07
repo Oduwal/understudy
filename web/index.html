@@ -3,170 +3,50 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Understudy: it writes the forecast down before the chain decides</title>
-  <meta name="description" content="Every 15 minutes, an agent commits its forecast of the Walrus Memory relayer to Walrus Mainnet, then the Sui chain grades it through Tatum.">
+  <title>Understudy: Walrus Memory relayer forecast</title>
+  <meta name="description" content="An agent that forecasts Walrus Memory relayer activity, is graded by the Sui chain, and learns from its misses.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="landing.css">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
   <link rel="icon" href="mark.svg" type="image/svg+xml">
-  <script>
-    // Older links pointed at the dashboard with ?source=...; send them on.
-    if (new URLSearchParams(location.search).has("source")) location.replace(`dashboard.html${location.search}`);
-    document.documentElement.classList.add("js");
-  </script>
 </head>
 <body>
-  <main>
-    <!-- The first screen: a sheet of the product's own screens, with one text cell. -->
-    <section class="sheet" aria-labelledby="title">
-      <div class="col c1">
-        <figure class="frame"><img src="img/replay-chart.jpg" alt="Dashboard chart of a day of replayed relayer activity, the forecast range around the counted line" width="864" height="484"><figcaption class="strip s-yellow">478 windows replayed</figcaption></figure>
-        <figure class="frame"><img src="img/live-phone.jpg" alt="The live dashboard on a phone" width="390" height="844"><figcaption class="strip s-paper">The live record on a phone</figcaption></figure>
-        <figure class="frame"><img src="img/replay-alerts.jpg" alt="Alerts from the replay: unusually busy windows" width="432" height="190"><figcaption class="strip s-grey">Unusually busy, flagged</figcaption></figure>
-      </div>
-      <div class="col c2">
-        <figure class="frame"><img src="img/live-why.jpg" alt="Why this number: each forecaster's estimate and trust, adding up to the forecast" width="432" height="534"><figcaption class="strip s-paper">Why this number</figcaption></figure>
-        <figure class="frame"><img src="img/live-windows.jpg" alt="Latest live windows with forecast, no-memory forecast and actual count" width="864" height="230"><figcaption class="strip s-black">Graded on chain</figcaption></figure>
-        <figure class="frame"><img src="img/replay-why.jpg" alt="A replayed forecast and its breakdown" width="432" height="300"><figcaption class="strip s-yellow">Trust by track record</figcaption></figure>
-      </div>
-      <div class="col c3">
-        <figure class="frame shutter"><img src="img/live-chart.jpg" alt="The live chart, with the gap where the agent's machine slept" width="864" height="484"><figcaption class="strip s-grey">Live, 6 Nov, gaps shown</figcaption></figure>
-        <div class="panel">
-          <p class="wordmark"><img src="mark-dark.svg" alt="" width="28" height="28">Understudy</p>
-          <h1 id="title">It writes the forecast down before the chain decides.</h1>
-          <p class="panel-text">Every 15 minutes an agent commits its forecast of the Walrus Memory relayer to Walrus Mainnet. Then the Sui chain, read through Tatum, grades it.</p>
-          <div class="panel-actions">
-            <a class="button button-black" href="dashboard.html?source=live">Open the live record</a>
-            <a class="text-link" href="https://github.com/Oduwal/understudy">Read the code</a>
-          </div>
-          <nav class="panel-links" aria-label="Sections"><a href="#how">How it works</a><a href="#memory">Results</a><a href="#proof">Proof</a></nav>
-        </div>
-        <figure class="frame"><img src="img/replay-chart.jpg" alt="" width="864" height="484"><figcaption class="strip s-black">Forecast range, counted line</figcaption></figure>
-      </div>
-      <div class="col c5">
-        <article class="frame live" aria-labelledby="live-title" aria-live="polite">
-          <div class="live-body" data-ui>
-            <h2 class="live-title" id="live-title">Newest forecast</h2>
-            <p class="live-window" id="live-window">Reading it from Walrus Mainnet</p>
-            <p class="live-number"><span id="live-number">&ndash;</span><span class="live-unit">memories expected</span></p>
-            <p class="live-line" id="live-range"></p>
-            <p class="live-clock" id="live-clock"></p>
-            <p class="live-line" id="live-saved"></p>
-            <a class="live-blob" id="live-blob" href="dashboard.html?source=live">Open on the dashboard</a>
-          </div>
-          <p class="strip s-yellow">Live from Walrus</p>
-        </article>
-        <figure class="frame"><img src="img/live-chart.jpg" alt="" width="864" height="484"><figcaption class="strip s-paper">Every window, kept</figcaption></figure>
-      </div>
-      <div class="col c6">
-        <figure class="frame"><img src="img/replay-alerts.jpg" alt="" width="432" height="190"><figcaption class="strip s-black">No hand-set thresholds</figcaption></figure>
-        <figure class="frame"><img src="img/live-why.jpg" alt="" width="432" height="534"><figcaption class="strip s-grey">Shares add up</figcaption></figure>
-        <figure class="frame"><img src="img/live-windows.jpg" alt="" width="864" height="230"><figcaption class="strip s-yellow">Misses stay on record</figcaption></figure>
-      </div>
-    </section>
+  <div class="shell">
+    <nav class="rail" aria-label="Main">
+      <a class="mark" href="./" aria-label="Understudy home" title="Understudy">
+        <img src="mark.svg" alt="" width="26" height="26">
+      </a>
+      <a class="rail-item" href="#overview" data-view="overview" title="Forecast">
+        <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2 14 6 8l3 3 3-6 4 5"/><path d="M2 16.5h14"/></svg>
+        <span>Forecast</span>
+      </a>
+      <a class="rail-item" href="#lessons" data-view="lessons" title="Lessons">
+        <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 3.5h9.5a2.5 2.5 0 0 1 2.5 2.5v9H5.5A2.5 2.5 0 0 1 3 12.500z"/><path d="M6 7h6M6 10h4"/></svg>
+        <span>Lessons</span>
+      </a>
+      <a class="rail-item" href="#record" data-view="record" title="Record">
+        <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 4.500h12M3 9h12M3 13.500h12"/></svg>
+        <span>Record</span>
+      </a>
+    </nav>
 
-    <!-- How it works: one real forecast card, further along in each field. -->
-    <section class="fields" id="how" aria-labelledby="how-title">
-      <div class="field f-yellow">
-        <h2 class="field-heading" id="how-title">One window, start to finish</h2>
-        <div class="card" data-ui>
-          <p class="card-k">Fri 6 Nov, 18:15&ndash;18:30 UTC</p>
-          <p class="card-n">61 <span>expected</span></p>
-          <p class="card-k">Range 34 to 81</p>
-          <p class="card-row on">Saved to Walrus 4 min 20 s before it opened</p>
+    <main class="canvas">
+      <header class="title-row">
+        <div>
+          <h1 id="title">Relayer forecast</h1>
+          <p class="subline" id="finding" aria-live="polite">Reading the agent's record.</p>
         </div>
-        <p class="clause">First it writes the number down.</p>
-      </div>
-      <div class="field f-graphite">
-        <div class="card" data-ui>
-          <p class="card-k">Fri 6 Nov, 18:15&ndash;18:30 UTC</p>
-          <p class="card-n">61 <span>expected</span></p>
-          <p class="card-k">Range 34 to 81</p>
-          <p class="card-row">Saved to Walrus 4 min 20 s before it opened</p>
-          <p class="card-row on">Window open: the relayer works on Sui</p>
+        <div class="title-actions">
+          <div class="tabs" id="sources" role="group" aria-label="Data source"></div>
+          <p class="stamp" id="stamp"></p>
         </div>
-        <p class="clause">Then the window opens on Sui.</p>
-      </div>
-      <div class="field f-paper">
-        <div class="card" data-ui>
-          <p class="card-k">Fri 6 Nov, 18:15&ndash;18:30 UTC</p>
-          <p class="card-n">61 <span>expected</span></p>
-          <p class="card-k">Range 34 to 81</p>
-          <p class="card-row">Window closed</p>
-          <p class="card-row on">Counted 40 through Tatum. Off by 21; no memory would have been off by 26</p>
-        </div>
-        <p class="clause">Then Tatum counts the chain.</p>
-      </div>
-      <div class="field f-black">
-        <div class="card" data-ui>
-          <p class="card-k">Fri 6 Nov, 18:15&ndash;18:30 UTC</p>
-          <p class="card-n">40 <span>counted</span></p>
-          <p class="card-k">Forecast 61, inside its range</p>
-          <p class="card-row on">Grade saved to Walrus. Next forecast trusts half last hour, half usual 38%, last hour 35%</p>
-        </div>
-        <p class="clause">Then the grade goes back to Walrus.</p>
-      </div>
-    </section>
-
-    <!-- Results: three figures on stepped tiles. -->
-    <section class="figures" id="memory" aria-labelledby="memory-title">
-      <h2 class="figures-heading" id="memory-title">Why memory matters</h2>
-      <div class="steps">
-        <div class="step step-lead">
-          <p class="step-figure">25.8</p>
-          <p class="step-caption">memories off per window with memory, trusting each forecaster by its record</p>
-        </div>
-        <div class="step step-paper">
-          <p class="step-figure">27.0</p>
-          <p class="step-caption">with no memory, every forecaster trusted equally</p>
-        </div>
-        <div class="step step-grey">
-          <p class="step-figure">28.0</p>
-          <p class="step-caption">the best single forecaster on its own</p>
-        </div>
-      </div>
-      <p class="figures-note">Over 478 replayed windows of real Mainnet history: a modest gain, from a replay that tests the method. <span id="live-score">The live record keeps its own score on the dashboard.</span></p>
-    </section>
-
-    <!-- Proof: named facts on a board of tiles. -->
-    <section class="board" id="proof" aria-labelledby="proof-title">
-      <div class="tile tile-head"><h2 id="proof-title">Proof you can check</h2></div>
-      <div class="tile"><h3>A blob per forecast</h3><p>Every live forecast links to its blob on Walruscan.</p></div>
-      <div class="tile"><h3>The time is on record</h3><p>The relayer records the write; the blob is certified on Sui.</p></div>
-      <div class="tile"><h3>Late means unscored</h3><p>A forecast written after its window opened is left out of the score.</p></div>
-      <div class="tile"><h3>Rebuilt from Walrus</h3><p>The live view is reassembled from recall, cached for five minutes.</p></div>
-      <div class="tile"><h3>Sealed, not hidden</h3><p>Contents are encrypted with Seal; existence and certification are public.</p></div>
-      <div class="tile"><h3>Misses stay in</h3><p>Every miss, gap and late window stays on the record.</p></div>
-    </section>
-
-    <!-- The close: one cropped row of the board. -->
-    <section class="close" aria-labelledby="close-title">
-      <figure class="flank flank-left"><img src="img/live-phone.jpg" alt="" width="390" height="844" loading="lazy"></figure>
-      <div class="action-tile">
-        <h2 id="close-title">Watch it work, live</h2>
-        <p>A new forecast every 15 minutes, read straight from Walrus Mainnet, graded by the Sui chain.</p>
-        <div class="panel-actions">
-          <a class="button button-black" href="dashboard.html?source=live">Open the live record</a>
-          <a class="text-link" href="https://github.com/Oduwal/understudy">Read the code</a>
-        </div>
-      </div>
-      <div class="flank flank-right" aria-hidden="true"></div>
-    </section>
-  </main>
-
-  <footer class="foot">
-    <p class="blocks" aria-label="Understudy">
-      <span class="b b1" aria-hidden="true">U</span><span class="b b2" aria-hidden="true">N</span><span class="b b3" aria-hidden="true">D</span><span class="b b4" aria-hidden="true">E</span><span class="b b5" aria-hidden="true">R</span><span class="b b6" aria-hidden="true">S</span><span class="b b7" aria-hidden="true">T</span><span class="b b8" aria-hidden="true">U</span><span class="b b9" aria-hidden="true">D</span><span class="b b10" aria-hidden="true">Y</span>
-    </p>
-    <div class="foot-grid">
-      <div><h3>The agent</h3><a href="dashboard.html?source=live">Live record</a><a href="dashboard.html?source=replay">Replay</a><a href="#how">How it works</a></div>
-      <div><h3>Code</h3><a href="https://github.com/Oduwal/understudy">GitHub</a><a href="https://github.com/Oduwal/understudy#readme">README</a></div>
-      <div><h3>Built with</h3><p>Tatum Sui gRPC gateway</p><p>Walrus Memory</p><p>Sui Mainnet</p></div>
-      <div><h3>Made for</h3><a href="https://tatum.io/hackathon/total-recall">Total Recall, the Tatum &times; Walrus hackathon</a><p>November 2026</p></div>
-    </div>
-  </footer>
-
-  <script src="landing.js" type="module"></script>
+      </header>
+      <p class="source-note" id="note" hidden></p>
+      <div id="view"></div>
+    </main>
+  </div>
+  <div class="tip" id="tip" role="status" hidden></div>
+  <script src="app.js" type="module"></script>
 </body>
 </html>
