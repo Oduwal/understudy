@@ -33,3 +33,9 @@ understudy-*.txt
 # Vercel CLI link
 .vercel/
 
+
+# Railway state snapshot (chain data and the agent's event log; regenerated when moving the agent)
+seed.tar.gz
+launch-video/vo/
+launch-video/voice.wav
+launch-video/*.mp4
