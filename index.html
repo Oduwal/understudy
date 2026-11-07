@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Understudy: Walrus Memory relayer forecast</title>
+  <meta name="description" content="An agent that forecasts Walrus Memory relayer activity, is graded by the Sui chain, and learns from its misses.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+  <link rel="icon" href="mark.svg" type="image/svg+xml">
+</head>
+<body>
+  <div class="shell">
+    <nav class="rail" aria-label="Main">
+      <a class="mark" href="./" aria-label="Understudy home" title="Understudy">
+        <img src="mark.svg" alt="" width="26" height="26">
+      </a>
+      <a class="rail-item" href="#overview" data-view="overview" title="Forecast">
+        <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2 14 6 8l3 3 3-6 4 5"/><path d="M2 16.5h14"/></svg>
+        <span>Forecast</span>
+      </a>
+      <a class="rail-item" href="#lessons" data-view="lessons" title="Lessons">
+        <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 3.5h9.5a2.5 2.5 0 0 1 2.5 2.5v9H5.5A2.5 2.5 0 0 1 3 12.500z"/><path d="M6 7h6M6 10h4"/></svg>
+        <span>Lessons</span>
+      </a>
+      <a class="rail-item" href="#record" data-view="record" title="Record">
+        <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 4.500h12M3 9h12M3 13.500h12"/></svg>
+        <span>Record</span>
+      </a>
+    </nav>
+
+    <main class="canvas">
+      <header class="title-row">
+        <div>
+          <h1 id="title">Relayer forecast</h1>
+          <p class="subline" id="finding" aria-live="polite">Reading the agent's record.</p>
+        </div>
+        <div class="title-actions">
+          <div class="tabs" id="sources" role="group" aria-label="Data source"></div>
+          <p class="stamp" id="stamp"></p>
+        </div>
+      </header>
+      <p class="source-note" id="note" hidden></p>
+      <div id="view"></div>
+    </main>
+  </div>
+  <div class="tip" id="tip" role="status" hidden></div>
+  <script src="app.js" type="module"></script>
+</body>
+</html>
